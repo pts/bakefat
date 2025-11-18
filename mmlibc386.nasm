@@ -1224,6 +1224,7 @@ section _TEXT
 %ifdef __NEED__memcpy
   global _memcpy  ; Longer code than memcpy_.
   _memcpy:  ; void * __cdecl memcpy(void *dest, const void *src, size_t n);
+  %ifndef __NEED__memmove
 		push edi
 		push esi
 		mov ecx, [esp+0x14]
@@ -1235,11 +1236,39 @@ section _TEXT
 		pop esi
 		pop edi
 		ret
+  %else
+		; Fall through to _memmove.
+  %endif
+%endif
+
+%ifdef __NEED__memmove
+  global _memmove  ; Longer code than memmove_.
+  _memmove:  ; void * __cdecl memmove(void *dest, const void *src, size_t n);
+		push edi
+		push esi
+		mov ecx, [esp+0x14]
+		mov esi, [esp+0x10]
+		mov edi, [esp+0xc]
+		push edi
+		cmp edi, esi
+		jb short .rep_movsb
+		add esi, ecx
+		add edi, ecx
+		dec esi
+		dec edi
+		std
+    .rep_movsb:	rep movsb
+		cld
+		pop eax  ; Result: pointer to dest.
+		pop esi
+		pop edi
+		ret
 %endif
 
 %ifdef __NEED_memcpy_
   global memcpy_
   memcpy_:  ; void * __watcall memcpy(void *dest, const void *src, size_t n);
+  %ifndef __NEED__memmove
 		push edi
 		xchg esi, edx
 		xchg edi, eax  ; EDI := dest; EAX := junk.
@@ -1251,30 +1280,31 @@ section _TEXT
 		xchg esi, edx  ; Restore ESI.
 		pop edi
 		ret
+  %else
+		; Fall through to memmove_.
+  %endif
 %endif
 
 %ifdef __NEED_memmove_
   global memmove_
   memmove_:  ; void * __watcall memmove(void *dest, const void *src, size_t n);
 		push edi
-		push esi
-		; EAX := argument dest. It will remain in EAX until return.
-		mov esi, edx  ; ESI := argument src.
+		xchg esi, edx  ; ESI := argument dest; EDX := orig ESI.
+		xchg edi, eax  ; EDI := dest; EAX := junk.
 		xchg ecx, ebx  ; ECX := argument n; EBX := orig ECX.
-		cmp eax, esi
-		mov edi, eax
-		jnc .reverse
-		rep movsb
-		jmp short .return2
-    .reverse:	add esi, ecx
+		push edi
+		cmp edi, esi
+		jb short .rep_movsb
+		add esi, ecx
 		add edi, ecx
 		dec esi
 		dec edi
 		std
-		rep movsb
+    .rep_movsb:	rep movsb
 		cld
-    .return2:	mov ecx, ebx  ; ECX := orig EBX.
-		pop esi
+		pop eax  ; Result: pointer to dest.
+		xchg ecx, ebx  ; Restore ECX from EBX; EBX := junk. EBX in __watcall is scratch, we don't care what we put there.
+		xchg esi, edx  ; Restore ESI.
 		pop edi
 		ret
 %endif
