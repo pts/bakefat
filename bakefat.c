@@ -835,12 +835,16 @@ static ub is_aligned_fat32_sector_count_at_most(const struct fat_params *fpp, ud
   return fat_sector_in_cluster_count <= fp.fcp.sector_count && fat_clusters_sec_ofs <= fp.fcp.sector_count - fat_sector_in_cluster_count;
 }
 
+typedef char assert_ud_unsigned[(ud)-1 > 0 ? 1 : -1];
+typedef char assert_ud_overflow_wrap[(ud)-1 + 1 == 0 ? 1 : -1];
+
 typedef enum parseint_error_t {
   PARSEINT_OK = 0,
   PARSEINT_BAD_PREFIX = 1,
   PARSEINT_BAD_CHAR = 2,
   PARSEINT_OVERFLOW = 3,
-  PARSEINT_TOO_SHORT = 4  /* For parse_volume_id(...). */
+  PARSEINT_TOO_SHORT = 4,  /* For parse_volume_id(...). */
+  PARSEINT_NULL = 5,
 } parseint_error_t;
 
 /* Parses a C unsigned decimal, hexadecimal, octal literal, sets *result_ptr
@@ -848,12 +852,19 @@ typedef enum parseint_error_t {
  */
 static parseint_error_t parse_ud(const char *s, ud *result_ptr) {
   ud u, limit;
-  ub base, digit;
+  unsigned char base, digit;
   parseint_error_t result;
-#  if ('A' | 0x20) != 'a'
-#    error ASCII required.
-#  endif
-  if (s[0] == '0' && (s[1] | 0x20) == 'x') {
+  if (!s) return PARSEINT_NULL;
+#if '0' + 9 == '9' && 'a' + 25 == 'z' && 'A' + 25 == 'Z'
+#else  /* e.g. EBCDIC. */
+#  error Alphanumeric characters code must be consective.
+#endif
+#if ('A' | 32) == 'a'  /* ASCII. */
+  if (s[0] == '0' && (s[1] | 32) == 'x')
+#else
+  if (s[0] == '0' && (s[1] == 'x' || s[1] == 'X'))
+#endif
+  {
     base = 16;
     limit = (ud)-1 / 16U;
     s += 2;
@@ -869,7 +880,11 @@ static parseint_error_t parse_ud(const char *s, ud *result_ptr) {
   }
   for (u = 0, result = PARSEINT_OK; *s != '\0'; ++s) {
     digit = *s;
+#if ('A' | 32) == 'a'  /* ASCII. */
     digit = (base == 16 && (digit | 32U) - ('a' + 0U) < 6U) ? (digit | 32U) - ('a' - 10U) : digit - ('0' + 0U);
+#else
+    digit = (base == 16 && (digit) - ('a' + 0U) < 6U) ? (digit - ('a' - 10U)) : (base == 16 && (digit) - ('A' + 0U) < 6U) ? digit - ('A' - 10U) : digit - ('0' + 0U);
+#endif
     if (digit >= base) return PARSEINT_BAD_CHAR;
     if (u > limit) result = PARSEINT_OVERFLOW;
     u *= base;
