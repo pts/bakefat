@@ -94,7 +94,8 @@ die("fatal: missing MHDR relocs: $infn\n") if @reloc_addrs < 3 or $reloc_addrs[0
 
 my $phdr1_memsize = $end_addr - $data_addr - 4;
 my $elfhdr_size = $phdr1_memsize ? 0x74 : 0x54;
-my $elfhdr = pack("Ca3C4x8v2V3x8v4x4", 0x7f, "ELF", 1, 1, 1, $osabi, 2, 3, 1, $eip + $org - $text_addr + $elfhdr_size, 0x34, 0x34, 0x20, ($elfhdr_size - 0x34) >> 5, 0x28);  # ELF32_Ehdr.
+my $ei_brand = ($osabi == 9) ? "FreeBSD" : "";  # FreeBSD 9.3 doesn't need it, FreeBSD 3.5.1 fails without it: ELF binary type not known.  Use "brandelf" to brand it.
+my $elfhdr = pack("Ca3C4a8v2V3x8v4x4", 0x7f, "ELF", 1, 1, 1, $osabi, $ei_brand, 2, 3, 1, $eip + $org - $text_addr + $elfhdr_size, 0x34, 0x34, 0x20, ($elfhdr_size - 0x34) >> 5, 0x28);  # ELF32_Ehdr.
 $elfhdr .= pack("V8", 1, 0, $org, $org, $elfhdr_size + $data_addr - $text_addr, $elfhdr_size + $data_addr - $text_addr, 5, 0x1000);  # ELF32_Phdr for text.
 $elfhdr .= pack("V8", 1, $elfhdr_size + $data_addr - $text_addr, $org + $data_addr - $text_addr + 0x1000 + $elfhdr_size, $org + $data_addr - $text_addr + 0x1000 + $elfhdr_size, $data_end_addr - $data_addr - 4, $phdr1_memsize, 6, 0x1000) if $phdr1_memsize;  # ELF32_Phdr for data and bss.
 die("fatal: assert: bad ELF-32 header size\n") if length($elfhdr) != $elfhdr_size;
